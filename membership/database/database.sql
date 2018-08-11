@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS `membership_members` (
   `address_extra` VARCHAR(255) NULL DEFAULT NULL,
   `address_zipcode` INT(11) NULL DEFAULT NULL,
   `address_city` VARCHAR(64) NULL DEFAULT NULL,
+  `address_state_region` VARCHAR(255) NULL DEFAULT NULL,
   `address_country` CHAR(2) NULL DEFAULT 'se',
   `phone` VARCHAR(64) NULL DEFAULT NULL,
   `created_at` DATETIME NULL,
@@ -193,9 +194,43 @@ CREATE TABLE IF NOT EXISTS `membership_members_groups` (
 ENGINE = InnoDB;
 
 
+-- -----------------------------------------------------
+-- Table `rfid`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `rfid` ;
+
+CREATE TABLE IF NOT EXISTS `rfid` (
+  `rfid_id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `member_id` INT UNSIGNED NOT NULL,
+    `title` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL,
+    `description` text COLLATE utf8_unicode_ci,
+    `tagid` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+    `status` varchar(255) COLLATE utf8_unicode_ci NOT NULL,
+    `startdate` datetime DEFAULT NULL,
+    `enddate` datetime DEFAULT NULL,
+    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `deleted_at` datetime DEFAULT NULL,
+    PRIMARY KEY (`rfid_id`),
+    KEY `rfid_tagid_index` (`tagid`)
+    CONSTRAINT `fk_members_rfid_1`
+      FOREIGN KEY (`member_id`)
+      REFERENCES `membership_members` (`member_id`)
+      ON DELETE NO ACTION
+      ON UPDATE NO ACTION)
+) ENGINE=InnoDB;
+
+ALTER TABLE `rfid` CHANGE `rfid_id` `id` int(10) unsigned NOT NULL AUTO_INCREMENT;
+ALTER TABLE `rfid` CHANGE `updated_at` `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+
+-- -----------------------------------------------------
+-- Modes
+-- -----------------------------------------------------
 SET SQL_MODE=@OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
+
 
 -- -----------------------------------------------------
 -- Data for table `membership_groups`
