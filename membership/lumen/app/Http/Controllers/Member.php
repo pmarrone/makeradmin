@@ -12,6 +12,10 @@ use Makeradmin\Traits\EntityStandardFiltering;
 
 use DB;
 
+const SPAN_LABACCESS = "labaccess";
+const SPAN_MEMBERSHIP = "membership";
+const SPAN_SPECIAL_LABACCESS = "special_labaccess";
+
 class Member extends Controller
 {
 	use EntityStandardFiltering;
@@ -32,7 +36,25 @@ class Member extends Controller
 			$params["member_number"] = explode(",", $params["member_number"]);
 		}
 
-		return $this->_list("Member", $params);
+		$include_membership = empty($params["include_membership"]) ? false : filter_var($params["include_membership"], FILTER_VALIDATE_BOOLEAN);
+		
+		unset($params["include_membership"]);
+
+		$response = $this->_list("Member", $params);
+
+		if (!empty($include_membership) && $include_membership) {
+			// Modify the response to include membership data
+			$result = $response->getData()->data;
+			foreach ($result as $user) {
+				$user->membership = $this->_getMembership($user->member_id);
+			}
+			return Response()->json([
+				"status" => "ok",
+				"data" => $result,
+			], 200);
+		} else {
+			return $response;
+		}
 	}
 
 	/**
@@ -310,6 +332,19 @@ class Member extends Controller
 	/**
 	 * Get all permissions for a member
 	 */
+	public function getKeys(Request $request, $member_id)
+	{
+		// Get all query string parameters
+		$params = $request->query->all();
+
+		// Filter on member
+		$params["member_id"] = $member_id;
+		return $this->_list("Key", $params);
+	}
+
+	/**
+	 * Get all permissions for a member
+	 */
 	public function getPermissions(Request $request, $member_id)
 	{
 		// Get permissions for user
@@ -327,6 +362,129 @@ class Member extends Controller
 			"data" => $permissions,
 		], 200);
 	}
+
+	public function addMembershipSpan(Request $request, $member_id)
+	{
+		$json = $request->json()->all();
+
+		if ($json['type'] != SPAN_LABACCESS && $json['type'] != SPAN_MEMBERSHIP && $json['type'] != SPAN_SPECIAL_LABACCESS) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Unknown membership type {$json['type']}",
+			], 400);
+		}
+
+		DB::insert("INSERT INTO membership_spans(member_id, type, startdate, enddate, creation_reason) VALUES(?, ?, ?, ?, ?)", [$member_id, $json['type'], $json['startdate'], $json['enddate'], $json['creation_reason']]);
+
+		return $this->getMembership($request, $member_id);
+	}
+
+	public function addMembershipDays(Request $request, $member_id)
+	{
+		$json = $request->json()->all();
+		if (empty($json['type'])) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Missing parameter 'type' (" . SPAN_LABACCESS . ", " . SPAN_MEMBERSHIP . ", " . SPAN_SPECIAL_LABACCESS . ")",
+			], 400);
+		}
+
+		if (empty($json['days'])) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Missing parameter 'days'",
+			], 400);
+		}
+
+		if (empty($json['creation_reason']) || $json['creation_reason'] == null) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Missing parameter 'creation_reason'",
+			], 400);
+		}
+
+		$last_period = DB::table("membership_spans")
+			->where('member_id', $member_id)
+			->where('type', $json['type'])
+			->max('enddate');
+
+		if ($last_period == null) {
+			$last_period = date("Y-m-d");
+		}
+
+		$days = (int)$json['days'];
+		if ($days <= 0) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Must specify a positive number of days",
+			], 400);
+		}
+
+		$endtime = date('Y-m-d', strtotime("+{$days} days", strtotime($last_period)));
+
+		if ($json['type'] != SPAN_LABACCESS && $json['type'] != SPAN_MEMBERSHIP && $json['type'] != SPAN_SPECIAL_LABACCESS) {
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Unknown membership type {$json['type']}",
+			], 400);
+		}
+
+		DB::insert("INSERT INTO membership_spans(member_id, type, startdate, enddate, creation_reason) VALUES(?, ?, ?, ?, ?)", [$member_id, $json['type'], $last_period, $endtime, $json['creation_reason']]);
+		return $this->getMembership($request, $member_id);
+	}
+
+	/**
+	 * Get membership times
+	 */
+	private function _getMembership($member_id)
+	{
+		// Check if the current time is covered by any span of valid membership times
+		$labaccess = DB::table("membership_spans")
+			->where('member_id', $member_id)
+			->whereRaw("(type=? OR type=?)", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
+			->whereRaw("startdate<=NOW() AND NOW()<=enddate")
+			->value('enddate') !== null;
+
+		$membership = DB::table("membership_spans")
+			->where('member_id', $member_id)
+			->where("type", SPAN_MEMBERSHIP)
+			->whereRaw("startdate<=NOW() AND NOW()<=enddate")
+			->value('enddate') !== null;
+
+		// Find the latest enddate of any membership span.
+		// This is the time the member's membership ends.
+		// (at least unless someone has been manually tweaking the database to create some sort of gap before that time)
+		$labaccess_time = DB::table("membership_spans")
+			->where('member_id', $member_id)
+			->whereRaw("(type=? OR type=?)", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
+			->max("enddate");
+
+		$membership_time = DB::table("membership_spans")
+			->where('member_id', $member_id)
+			->where("type", SPAN_MEMBERSHIP)
+			->max("enddate");
+
+		// Send response to client
+		return [
+			"has_labaccess" => $labaccess,
+			"has_membership" => $membership,
+			"labaccess_end" => $labaccess_time,
+			"membership_end" => $membership_time
+		];
+	}
+
+	/**
+	 * Get membership times
+	 */
+	public function getMembership(Request $request, $member_id)
+	{
+		// Send response to client
+		return Response()->json([
+			"status"  => "ok",
+			"data" => $this->_getMembership($member_id)
+		], 200);
+	}
+
 }
 
 /*

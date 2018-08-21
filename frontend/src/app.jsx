@@ -11,17 +11,9 @@ require('uikit/dist/js/components/upload')
 // React stuff
 import React from 'react';
 import ReactDOM from 'react-dom';
-import {
-	Router,
-	browserHistory,
-} from 'react-router'
-import {
-	Nav,
-	SideNav,
-	SideNav2,
-	Breadcrumb,
-} from './nav'
-import Backbone from './Backbone/FullExtend'
+import {Router,	browserHistory} from 'react-router';
+import {Nav, SideNav, SideNav2, Breadcrumb} from './nav';
+import Backbone from './Backbone/FullExtend';
 
 // Login / OAuth
 import auth from './auth'
@@ -50,33 +42,6 @@ var nav = new Backbone.Model({
 			],
 		},
 		{
-			text: "Automation",
-			target: "/auto",
-			icon: "coffee",
-			children:
-			[
-				{
-					text: "Översikt",
-					target: "/auto/overview",
-				},
-				{
-					type: "separator",
-				},
-				{
-					text: "Tictail-ordrar",
-					target: "/auto/tictail",
-				},
-				{
-					text: "Skapa verifikationer",
-					target: "/auto/verification",
-				},
-				{
-					text: "Multiaccess",
-					target: "/auto/multiaccess",
-				},
-			],
-		},
-		{
 			text: "Nycklar",
 			target: "/keys",
 			icon: "key",
@@ -88,80 +53,12 @@ var nav = new Backbone.Model({
 			children:
 			[
 				{
-					text: "Översikt",
-					target: "/sales/overview",
-				},
-				{
 					text: "Produkter",
 					target: "/sales/product",
 				},
 				{
-					text: "Prenumerationer",
-					target: "/sales/subscription",
-				},
-				{
-					text: "Historik",
-					target: "/sales/history",
-				},
-			],
-		},
-		{
-			text: "Ekonomi",
-			target: "/economy/2016",
-			icon: "money",
-			children:
-			[
-				{
-					text: "Översikt",
-					target: "/economy/2016/overview",
-				},
-				{
-					text: "Huvudbok",
-					target: "/economy/2016/masterledger",
-				},
-				{
-					text: "Verifikationer",
-					target: "/economy/2016/instruction",
-					children:
-					[
-						{
-							text: "",
-							target: "/economy/2016/instruction/:id",
-						},
-					],
-				},
-				{
-					text: "Fakturor",
-					target: "/economy/2016/invoice",
-					children:
-					[
-						{
-							text: "",
-							target: "/economy/2016/invoice/:id",
-						},
-					],
-				},
-				{
-					type: "heading",
-					text: "Rapporter",
-					target: "",
-				},
-				{
-					text: "Balansrapport",
-					target: "/economy/2016/valuationsheet",
-				},
-				{
-					text: "Resultatrapport",
-					target: "/economy/2016/resultreport",
-				},
-				{
-					type: "heading",
-					text: "Statistik",
-					target: "",
-				},
-				{
-					text: "Kostnadsställen",
-					target: "/economy/2016/costcenter",
+					text: "Ordrar",
+					target: "/sales/order",
 				},
 			],
 		},
@@ -198,70 +95,13 @@ var nav = new Backbone.Model({
 			icon: "cog",
 			children:
 			[
-				// Inställningar
 				{
-					text: "Globala inställningar",
-					target: "/settings/global",
+					text: "About",
+					target: "/settings/about",
 				},
 				{
 					text: "Access tokens",
 					target: "/settings/tokens",
-				},
-				{
-					text: "Automation",
-					target: "/settings/automation",
-				},
-				{
-					type: "separator",
-					target: "",
-				},
-
-				// Ekonomi
-				{
-					type: "heading",
-					text: "Ekonomi",
-					target: "",
-					icon: "money",
-				},
-				{
-					text: "Kontoplan",
-					target: "/settings/economy/account",
-				},
-				{
-					text: "Räkneskapsår",
-					target: "/settings/economy/accountingperiod",
-				},
-				{
-					text: "Debug",
-					target: "/settings/economy/debug",
-				},
-
-				// Export
-				{
-					type: "heading",
-					text: "Export",
-					target: "",
-					icon: "download",
-				},
-				{
-					text: "Exportera data",
-					target: "/settings/export",
-				},
-				{
-					text: "Importera data",
-					target: "/settings/import",
-				},
-
-				// About
-				{
-					type: "heading",
-					text: "About",
-					target: "",
-					icon: "about",
-				},
-				{
-					text: "About",
-					target: "/settings/about",
 				},
 			],
 		},
@@ -273,12 +113,12 @@ var nav = new Backbone.Model({
 	]
 });
 
-var App = React.createClass({
+const App = React.createClass({
 	getInitialState()
 	{
 		return {
 			isLoggedIn: auth.isLoggedIn()
-		}
+		};
 	},
 
 	updateAuth(isLoggedIn)
@@ -317,16 +157,14 @@ var App = React.createClass({
 				</div>
 			);
 		}
-		else
-		{
-			return (
-				<Login />
-			);
-		}
+
+		return (
+			<Login />
+		);
 
 	}
 });
-App.title = "Internal"
+App.title = "Internal";
 
 const rootRoute = {
 	childRoutes: [
@@ -357,29 +195,18 @@ const rootRoute = {
 					path: "logout",
 					component: require("./Pages/Login/Logout"),
 				},
-				require("./Economy/Routes"),
 				require("./Membership/Routes"),
 				require("./Sales/Routes"),
 				require("./Messages/Routes"),
 				require("./Keys/Routes"),
 				require("./Statistics/Routes"),
-				require("./Export/Routes"),
 				require("./Tictail/Routes"),
-				require("./Auto/Routes"),
 				{
 					path: "settings",
 					indexRoute: {
-						component: require("./Pages/Settings/Global"),
+						component: require("./Pages/About"),
 					},
 					childRoutes: [
-						{
-							path: "global",
-							component: require("./Pages/Settings/Global"),
-						},
-						{
-							path: "automation",
-							component: require("./Pages/Settings/Automation"),
-						},
 						{
 							path: "tokens",
 							component: require("./Pages/Login/AccessTokens"),
@@ -397,7 +224,8 @@ const rootRoute = {
 			]
 		}
 	]
-}
+};
+
 
 ReactDOM.render((
 	<Router history={browserHistory} routes={rootRoute} />

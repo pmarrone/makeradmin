@@ -10,7 +10,7 @@ from time import sleep
 from functools import wraps
 from dataclasses import dataclass
 from typing import Callable, Type, Optional, Set, Dict, Union
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil import parser
 from decimal import Decimal
 
@@ -18,8 +18,8 @@ SERVICE_USER_ID = -1
 
 
 class BackendException(Exception):
-    def __init__(self, tag: str, sv: str, en: Optional[str]) -> None:
-        self.tag = tag
+    def __init__(self, sv: str=None, en: Optional[str]=None, tag: Optional[str]=None) -> None:
+        self.tag = tag or self.__class__.__name__
         self.message_sv = sv
         self.message_en = en
 
@@ -43,34 +43,41 @@ class DB:
 
 class APIGateway:
     def __init__(self, host: str, key: str, host_frontend: str, host_backend: str) -> None:
-        self.host = host
-        self.host_frontend = host_frontend
-        self.host_backend = host_backend
+        self.host = self._ensure_protocol(host)
+        self.host_frontend = self._ensure_protocol(host_frontend)
+        self.host_backend = self._ensure_protocol(host_backend)
         self.auth_headers = {"Authorization": "Bearer " + key}
+
+    @staticmethod
+    def _ensure_protocol(host: str) -> str:
+        if not host.startswith("http://") and not host.startswith("https://"):
+            host = "http://" +  host
+        return host
 
     def get_frontend_url(self, path):
         host = self.host_frontend
-        if not host.startswith("http"):
-            host = "http://" + host
         return host + "/" + path
 
     def get(self, path, payload=None) -> requests.Response:
-        return requests.get('http://' + self.host + "/" + path, params=payload, headers=self.auth_headers)
+        return requests.get(self.host + "/" + path, params=payload, headers=self.auth_headers)
 
     def post(self, path, payload) -> requests.Response:
-        return requests.post('http://' + self.host + "/" + path, json=payload, headers=self.auth_headers)
+        return requests.post(self.host + "/" + path, json=payload, headers=self.auth_headers)
 
     def put(self, path, payload) -> requests.Response:
-        return requests.put('http://' + self.host + "/" + path, json=payload, headers=self.auth_headers)
+        return requests.put(self.host + "/" + path, json=payload, headers=self.auth_headers)
 
     def delete(self, path) -> requests.Response:
-        return requests.delete('http://' + self.host + "/" + path, headers=self.auth_headers)
+        return requests.delete(self.host + "/" + path, headers=self.auth_headers)
 
 
 DEFAULT_PERMISSION = object()
 
 
-def _format_datetime(date: Union[str, datetime]):
+def format_datetime(date: Union[str, datetime]):
+    if date is None:
+        return None
+
     if not isinstance(date, datetime):
         date = parser.parse(date)
 
@@ -88,7 +95,7 @@ class Service:
         self.gateway = gateway
         self.frontend = frontend
         self.app = Flask(name, static_url_path=self.full_path("static"))
-        self.app.jinja_env.filters['format_datetime'] = _format_datetime
+        self.app.jinja_env.filters['format_datetime'] = format_datetime
         self._used_permissions: Set[str] = set()
 
     def full_path(self, path: str):
@@ -194,8 +201,9 @@ def assert_get(data: Dict, key: str):
 
 def gateway_from_envfile(path):
     # Read the .env file
-    env = {s[0]: (s[1] if len(s) > 1 else "") for s in (s.split("=") for s in open(".env").read().split('\n'))}
-    host = env["HOST_BACKEND"].replace("http://", "").replace("https://", "")
+    with open(".env") as f:
+        env = {s[0]: (s[1] if len(s) > 1 else "") for s in (s.split("=") for s in f.read().split('\n'))}
+    host = env["HOST_BACKEND"]
     return APIGateway(host, env["API_BEARER"], env["HOST_FRONTEND"], env["HOST_BACKEND"])
 
 
@@ -224,7 +232,7 @@ def read_config():
 
 def eprint(s, **kwargs):
     ''' Print to stderr and flush the output stream '''
-    kwargs["file"] = sys.stderr
+    kwargs.setdefault("file", sys.stderr)
     print(s, **kwargs)
     sys.stderr.flush()
 
@@ -355,22 +363,28 @@ class Entity:
 
             return self._convert_to_dict(item)
 
-    def _convert_to_row(self, data):
-        return [c.write(data[c.exposed_name]) for c in self._writeable]
+    def _convert_to_row(self, data, fields):
+        return [c.write(data[c.exposed_name]) for c in fields]
 
     def _convert_to_dict(self, row):
         assert len(row) == len(self._readable)
         return {c.exposed_name: c.read(item) for c, item in zip(self._readable, row)}
 
     def put(self, data, id):
+        # Allow updating only a few fields
+        # Check which fields the object has, and update only those
+        fields = [col for col in self._writeable if col.exposed_name in data]
+        if len(fields) == 0:
+            abort(400, "No matching fields in the data, are you field names correct?")
+
         with self.db.cursor() as cur:
-            values = self._convert_to_row(data)
-            cols = ','.join(col.db_column + '=%s' for col in self._writeable)
+            values = self._convert_to_row(data, fields)
+            cols = ','.join(col.db_column + '=%s' for col in fields)
             cur.execute(f"UPDATE {self.table} SET {cols} WHERE id=%s", (*values, id))
 
     def post(self, data):
         with self.db.cursor() as cur:
-            values = self._convert_to_row(data)
+            values = self._convert_to_row(data, self._writeable)
             cols = ','.join('%s' for col in self._writeable)
             write_fields = ",".join(c.db_column for c in self._writeable)
             cur.execute(f"INSERT INTO {self.table} ({write_fields}) VALUES({cols})", values)
@@ -401,9 +415,11 @@ class Entity:
 
         with self.db.cursor() as cur:
             where = "WHERE " + where if where else ""
-            cur.execute(f"SELECT {self._read_fields} FROM {self.table} {where}", where_values)
+            sql = f"SELECT {self._read_fields} FROM {self.table} {where}"
+            cur.execute(sql, where_values)
             rows = cur.fetchall()
-            return [self._convert_to_dict(row) for row in rows]
+            res = [self._convert_to_dict(row) for row in rows]
+            return res
 
     def add_routes(self, service, endpoint, read_permission=DEFAULT_PERMISSION, write_permission=DEFAULT_PERMISSION):
         # Note: Many methods here return other methods that we then call.

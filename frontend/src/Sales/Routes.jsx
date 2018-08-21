@@ -3,13 +3,9 @@ module.exports = {
 		{
 			path: "/sales",
 			indexRoute: {
-				component: require("./Pages/Overview"),
+				component: require("./Pages/Product/List"),
 			},
 			childRoutes: [
-				{
-					path: "overview",
-					component: require("./Pages/Overview"),
-				},
 				{
 					path: "product",
 					component: require("./Pages/Product/List"),
@@ -23,14 +19,14 @@ module.exports = {
 					component: require("./Pages/Product/Edit"),
 				},
 				{
-					path: "subscription",
-					component: require("./Pages/Subscription/List"),
+					path: "order",
+					component: require("./Pages/Order/List"),
 				},
 				{
-					path: "history",
-					component: require("./Pages/History"),
+					path: "order/:id",
+					component: require("./Pages/Order/View"),
 				},
 			]
 		}
 	]
-}
+};
