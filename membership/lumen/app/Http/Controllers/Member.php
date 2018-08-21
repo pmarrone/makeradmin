@@ -4,8 +4,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
-use App\Models\Member as MemberModel;
-use App\Models\Group as GroupModel;
+use App\Models\Member  as MemberModel;
+use App\Models\Journal as MemberJournal;
+use App\Models\Group  as GroupModel;
 
 use Makeradmin\Traits\EntityStandardFiltering;
 
@@ -20,47 +21,6 @@ class Member extends Controller
 	 */
 	public function list(Request $request)
 	{
-/*
-		$user = $request->header("X-Username");
-		$org  = $request->header("X-Organisation");
-
-		if($user != "chille")
-		{
-			// Send response to client
-			return Response()->json([
-				"status"  => "error",
-				"message" => "Access denied",
-			], 403);
-		}
-*/
-		/*
-			En header specificerar vilken organisation/grupp man arbetar mot
-				Riksorg = allt
-				Förening / arbetsgrupp = begränsa till dess användare + kolla behörigheter
-				Användare = access denied
-
-			if($user == admin)
-			{
-				// Access to everything
-			}
-			else if($user == invidual member)
-			{
-				// Access only to self
-			}
-			else
-			{
-				//
-			}
-
-			Permissions:
-				Admin    = Hämta samtliga users
-				User     = Hämta sin egen data
-				Styrelse = Hämta users för en viss organisation
-
-				Read content
-				Create content
-				Delete content
-		*/
 
 		// Get all query string parameters
 		$params = $request->query->all();
@@ -163,6 +123,13 @@ class Member extends Controller
 				DB::insert("REPLACE INTO membership_members_groups(member_id, group_id) VALUES(?, ?)", [$member_id, $group_id]);
 			}
 		}
+
+		// Journal the event
+		$journal = new MemberJournal;
+
+		$journal->event_id = 1;
+		$journal->id = member_id;
+		$journal->save();
 
 		// Send response to client
 		return Response()->json([
@@ -361,3 +328,48 @@ class Member extends Controller
 		], 200);
 	}
 }
+
+/*
+
+Chilles kod
+		$user = $request->header("X-Username");
+		$org  = $request->header("X-Organisation");
+
+		if($user != "chille")
+		{
+			// Send response to client
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Access denied",
+			], 403);
+		}
+*/
+		/*
+			En header specificerar vilken organisation/grupp man arbetar mot
+				Riksorg = allt
+				Förening / arbetsgrupp = begränsa till dess användare + kolla behörigheter
+				Användare = access denied
+
+			if($user == admin)
+			{
+				// Access to everything
+			}
+			else if($user == invidual member)
+			{
+				// Access only to self
+			}
+			else
+			{
+				//
+			}
+
+			Permissions:
+				Admin    = Hämta samtliga users
+				User     = Hämta sin egen data
+				Styrelse = Hämta users för en viss organisation
+
+				Read content
+				Create content
+				Delete content
+		*/
+
