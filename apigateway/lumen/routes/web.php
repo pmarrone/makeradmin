@@ -30,6 +30,8 @@ $app->post("member/send_access_token", "ServiceRegistry@handleRoute");
 $app->post("webshop/register", "ServiceRegistry@handleRoute");
 $app->post("webshop/stripe_callback", "Webhooks@stripe");
 
+$app->post("emaildispatcher/webhooks", "ServiceRegistry@handleRoute");
+
 // Service registry
 $app->post("service/register",   ["middleware" => "auth:service", "uses" => "ServiceRegistry@register"]);
 $app->post("service/unregister", ["middleware" => "auth:service", "uses" => "ServiceRegistry@unregister"]);

@@ -11,3 +11,4 @@
 |
 */
 
+$app->  post("emaildispatcher/webhooks", ['middleware' => 'permission:public',   'uses' => "Webhook@callback"]);   // Handle mailgun callback

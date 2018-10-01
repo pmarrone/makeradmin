@@ -28,9 +28,8 @@ $app = new Laravel\Lumen\Application(
 $app->withFacades();
 
 // Load configuration file
+$app->configure("service");
 $app->configure("mailgun");
-
-// $app->withEloquent();
 
 /*
 |--------------------------------------------------------------------------
@@ -64,13 +63,13 @@ $app->singleton(
 |
 */
 
-// $app->middleware([
-//    App\Http\Middleware\ExampleMiddleware::class
-// ]);
+$app->middleware([
+	Makeradmin\Http\Middleware\Metadata::class,
+]);
 
-// $app->routeMiddleware([
-//     'auth' => App\Http\Middleware\Authenticate::class,
-// ]);
+$app->routeMiddleware([
+	'permission' => Makeradmin\Http\Middleware\CheckPermission::class,
+]);
 
 /*
 |--------------------------------------------------------------------------
