@@ -20,6 +20,13 @@ $app->group(array(), function() use ($app)
 	$app->   put("messages/templates/{id}", ['middleware' => 'permission:message_send', 'uses' => "Template@update"]); // Model: Update
 	$app->delete("messages/templates/{id}", ['middleware' => 'permission:message_send', 'uses' => "Template@delete"]); // Model: Delete
 
+	// Images
+	$app->   get("messages/image",          ['middleware' => 'permission:message_view', 'uses' => "Image@list"]);   // Get collection
+	$app->  post("messages/image",          ['middleware' => 'permission:message_edit', 'uses' => "Image@create"]); // Model: Create
+	$app->   get("messages/image/{id}",     ['middleware' => 'permission:message_view', 'uses' => "Image@read"]);   // Model: Read
+	$app->   put("messages/image/{id}",     ['middleware' => 'permission:message_edit', 'uses' => "Image@update"]); // Model: Update
+	$app->delete("messages/image/{id}",     ['middleware' => 'permission:message_edit', 'uses' => "Image@delete"]); // Model: Delete
+
 	// Messages
 	$app-> get("messages",                 ['middleware' => 'permission:message_view', 'uses' => "Message@list"]);     // Get collection (List sent messages)
 	$app->post("messages",                 ['middleware' => 'permission:message_send', 'uses' => "Message@create"]);   // Model: Create (Send new message)

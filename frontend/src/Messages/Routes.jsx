@@ -7,6 +7,14 @@ module.exports = {
             },
             childRoutes: [
                 {
+                    path: "images",
+                    component: require("./ImageList").default,
+                },
+                {
+                    path: "images/:image_id",
+                    component: require("./ImageEdit").default,
+                },
+                {
                     path: "history",
                     component: require("./MessageList").default
                 },

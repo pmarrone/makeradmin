@@ -83,6 +83,11 @@ const nav = {
                     target: "/messages/templates",
                     icon: "file-text-o",
                 },
+                {
+                    text: "Bilder",
+                    target: "/messages/images",
+                    icon: "image",
+                },
             ],
         },
         {
