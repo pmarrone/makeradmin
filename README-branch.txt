@@ -9,4 +9,3 @@ Maybe
 1) Move of rfid-keys-table to membership database
 2) GDPR adherent personal-data report
 
-

@@ -1,0 +1,55 @@
+#
+# Docker-compose compact edition
+# One database container and a single php+python container
+#
+
+version: "2"
+services:
+
+  # Database server image and container
+  db2:
+    image: mysql:5.7
+    # The lumen library seems to use an older mysql client which is not able to connect if mysql uses the newer caching_sha2_password authentication plugin.
+    # Therefore we need to override the mysql starting command to set a config option to use the older password authentication plugin.
+    command: mysqld --default-authentication-plugin=mysql_native_password
+    restart: always
+    ports:
+      - "3306:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./logs/mysql:/var/www/html/storage/logs
+    environment:
+      # Note: the config only seems to be updated when the container is initially created.
+      # Note: If the db config needs to be changed then the db image and volume needs to be destroyed first.
+      MYSQL_DATABASE: "${MYSQL_DB}"
+      MYSQL_ROOT_HOST: "db2"
+      MYSQL_USER: "${MYSQL_USER}"
+      MYSQL_PASSWORD: "${MYSQL_PASS}"
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+    networks:
+      - makeradmin
+
+  compact:
+    image: makeradmin/compact:1.0
+    build:
+      context: .
+      dockerfile: ./compact/DockerfileCompact
+    ports:
+      - "8010:80"
+    volumes:
+      - "./frontend:/opt/frontend"
+      - "./membership:/opt/membership"
+      - "./library:/opt/library"
+      - "./apigateway:/opt/apigateway"
+      - "./economy:/opt/economy"
+      - "./multiaccessync:/opt/multiaccessync"
+      - "./rfid:/opt/rfid"
+      - "./compact:/opt/compact"
+    networks:
+      - makeradmin
+
+networks:
+  makeradmin:
+volumes:
+  dbdata:
+
