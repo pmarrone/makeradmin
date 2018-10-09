@@ -4,11 +4,12 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
-use App\Models\Member  as MemberModel;
-use App\Models\Journal as MemberJournal;
-use App\Models\Group  as GroupModel;
+use App\Models\Member as MemberModel;
+use App\Models\Group as GroupModel;
+use App\Models\Span as SpanModel;
 
 use Makeradmin\Traits\EntityStandardFiltering;
+use Makeradmin\Exceptions\EntityValidationException;
 
 use DB;
 
@@ -25,6 +26,47 @@ class Member extends Controller
 	 */
 	public function list(Request $request)
 	{
+/*
+		$user = $request->header("X-Username");
+		$org  = $request->header("X-Organisation");
+
+		if($user != "chille")
+		{
+			// Send response to client
+			return Response()->json([
+				"status"  => "error",
+				"message" => "Access denied",
+			], 403);
+		}
+*/
+		/*
+			En header specificerar vilken organisation/grupp man arbetar mot
+				Riksorg = allt
+				Förening / arbetsgrupp = begränsa till dess användare + kolla behörigheter
+				Användare = access denied
+
+			if($user == admin)
+			{
+				// Access to everything
+			}
+			else if($user == invidual member)
+			{
+				// Access only to self
+			}
+			else
+			{
+				//
+			}
+
+			Permissions:
+				Admin    = Hämta samtliga users
+				User     = Hämta sin egen data
+				Styrelse = Hämta users för en viss organisation
+
+				Read content
+				Create content
+				Delete content
+		*/
 
 		// Get all query string parameters
 		$params = $request->query->all();
@@ -115,6 +157,10 @@ class Member extends Controller
 		{
 			$entity->updated_at = $json["updated_at"];
 		}
+		if (isset($json["create_deleted"]) && $json["create_deleted"] === true) {
+			$entity->deleted_at = $entity->created_at ?? DB::raw("NOW()");
+			$entity->include_deleted_at();
+		}
 
 		// Validate input
 		$entity->validate();
@@ -146,12 +192,12 @@ class Member extends Controller
 			}
 		}
 
-		// Journal the event
-		$journal = new MemberJournal;
-
-		$journal->event_id = 1;
-		$journal->id = member_id;
-		$journal->save();
+		// Load the entity again before we return it.
+		// This is required to make sure things like created_at are set properly
+		// (as that field is set by the database, not in php)
+		$filters = (array)$request->query->all();
+		$filters['member_id'] = $member_id;
+		$entity = MemberModel::load($filters);
 
 		// Send response to client
 		return Response()->json([
@@ -166,9 +212,9 @@ class Member extends Controller
 	public function read(Request $request, $member_id)
 	{
 		// Load the entity
-		$entity = MemberModel::load([
-			"member_id" => $member_id
-		]);
+		$filters = (array)$request->query->all();
+		$filters['member_id'] = $member_id;
+		$entity = MemberModel::load($filters);
 
 		// Generate an error if there is no such member
 		if(false === $entity)
@@ -257,6 +303,7 @@ class Member extends Controller
 		$result = DB::table("membership_members")
 			->select("member_id", "password")
 			->where("email", $username)
+			->whereNull('deleted_at')
 			->first();
 
 		// Verify the password hash
@@ -374,7 +421,36 @@ class Member extends Controller
 			], 400);
 		}
 
-		DB::insert("INSERT INTO membership_spans(member_id, type, startdate, enddate, creation_reason) VALUES(?, ?, ?, ?, ?)", [$member_id, $json['type'], $json['startdate'], $json['enddate'], $json['creation_reason']]);
+		$span_data = [
+			'member_id' => $member_id,
+			'startdate' => $json['startdate'],
+			'enddate' => $json['enddate'],
+			'span_type' => $json['type'],
+			'creation_reason' => $json['creation_reason'],
+		];
+
+		try {
+			$this->_create_span($span_data);
+		} catch (EntityValidationException $e) {
+			if ($e->getType() == 'unique' && $e->getColumn() == 'creation_reason'){
+				$old_span = SpanModel::load(['creation_reason' => $json['creation_reason']], false);
+				if (
+					$old_span->member_id == $span_data['member_id'] &&
+					$old_span->startdate == $span_data['startdate'] &&
+					$old_span->enddate == $span_data['enddate'] &&
+					$old_span->span_type == $span_data['span_type']
+				) {
+					// TODO: Report already exists?
+				} else {
+					return Response()->json([
+						"status" => "error",
+						"message" => "Span with creation_reason {$json['creation_reason']} already exists"
+					], 400);
+				}
+			} else {
+				throw $e;
+			}
+		}
 
 		return $this->getMembership($request, $member_id);
 	}
@@ -406,9 +482,10 @@ class Member extends Controller
 		$last_period = DB::table("membership_spans")
 			->where('member_id', $member_id)
 			->where('type', $json['type'])
+			->whereNull('deleted_at')
 			->max('enddate');
 
-		if ($last_period == null) {
+		if ($last_period == null || date_create_from_format('Y-m-d', $last_period) < date_create()) {
 			$last_period = date("Y-m-d");
 		}
 
@@ -429,8 +506,53 @@ class Member extends Controller
 			], 400);
 		}
 
-		DB::insert("INSERT INTO membership_spans(member_id, type, startdate, enddate, creation_reason) VALUES(?, ?, ?, ?, ?)", [$member_id, $json['type'], $last_period, $endtime, $json['creation_reason']]);
+		$span_data = [
+			'member_id' => $member_id,
+			'startdate' => $last_period,
+			'enddate' => $endtime,
+			'span_type' => $json['type'],
+			'creation_reason' => $json['creation_reason'],
+		];
+
+		try {
+			$this->_create_span($span_data);
+		} catch (EntityValidationException $e) {
+			if ($e->getType() == 'unique' && $e->getColumn() == 'creation_reason'){
+				$old_span = SpanModel::load(['creation_reason' => $json['creation_reason']], false);
+				$old_start = \DateTime::createFromFormat ('Y-m-d', $old_span->startdate);
+				$old_duration = \DateTime::createFromFormat ('Y-m-d', $old_span->enddate)->diff($old_start);
+				if (
+					$old_span->member_id == $span_data['member_id'] &&
+					$old_duration->d == $days && 
+					$old_span->span_type == $span_data['span_type']
+				) {
+					// TODO: Report already exists?
+				} else {
+					return Response()->json([
+						"status"  => "error",
+						"message" => "Different span with same creation_reason {$json['creation_reason']} already exists, old days {$old_duration->days}",
+					], 400);
+				}
+			} else {
+				throw $e;
+			}
+		}
 		return $this->getMembership($request, $member_id);
+	}
+
+	/**
+	 * Create new span
+	 */
+	private function _create_span($span_data){
+		$fields = ['member_id','startdate','enddate','span_type','creation_reason'];
+		$entity = new SpanModel();
+		foreach ($fields as $field) {
+			$entity->{$field} = $span_data[$field] ?? null;
+		}
+		// Validate input
+		$entity->validate();
+		// Save entity
+		return $entity->save();
 	}
 
 	/**
@@ -438,17 +560,23 @@ class Member extends Controller
 	 */
 	private function _getMembership($member_id)
 	{
+		$today = date("Y-m-d");
+
 		// Check if the current time is covered by any span of valid membership times
 		$labaccess = DB::table("membership_spans")
 			->where('member_id', $member_id)
-			->whereRaw("(type=? OR type=?)", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
-			->whereRaw("startdate<=NOW() AND NOW()<=enddate")
+			->whereIn("type", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
+			->whereDate("startdate", "<=", $today)
+			->whereDate("enddate", ">=", $today)
+			->whereNull("deleted_at")
 			->value('enddate') !== null;
 
 		$membership = DB::table("membership_spans")
 			->where('member_id', $member_id)
 			->where("type", SPAN_MEMBERSHIP)
-			->whereRaw("startdate<=NOW() AND NOW()<=enddate")
+			->whereDate("startdate", "<=", $today)
+			->whereDate("enddate", ">=", $today)
+			->whereNull("deleted_at")
 			->value('enddate') !== null;
 
 		// Find the latest enddate of any membership span.
@@ -456,12 +584,14 @@ class Member extends Controller
 		// (at least unless someone has been manually tweaking the database to create some sort of gap before that time)
 		$labaccess_time = DB::table("membership_spans")
 			->where('member_id', $member_id)
-			->whereRaw("(type=? OR type=?)", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
+			->whereIn("type", [SPAN_LABACCESS, SPAN_SPECIAL_LABACCESS])
+			->whereNull("deleted_at")
 			->max("enddate");
 
 		$membership_time = DB::table("membership_spans")
 			->where('member_id', $member_id)
 			->where("type", SPAN_MEMBERSHIP)
+			->whereNull("deleted_at")
 			->max("enddate");
 
 		// Send response to client
@@ -469,7 +599,7 @@ class Member extends Controller
 			"has_labaccess" => $labaccess,
 			"has_membership" => $membership,
 			"labaccess_end" => $labaccess_time,
-			"membership_end" => $membership_time
+			"membership_end" => $membership_time,
 		];
 	}
 
@@ -481,53 +611,8 @@ class Member extends Controller
 		// Send response to client
 		return Response()->json([
 			"status"  => "ok",
-			"data" => $this->_getMembership($member_id)
+			"data" => $this->_getMembership($member_id),
 		], 200);
 	}
 
 }
-
-/*
-
-Chilles kod
-		$user = $request->header("X-Username");
-		$org  = $request->header("X-Organisation");
-
-		if($user != "chille")
-		{
-			// Send response to client
-			return Response()->json([
-				"status"  => "error",
-				"message" => "Access denied",
-			], 403);
-		}
-*/
-		/*
-			En header specificerar vilken organisation/grupp man arbetar mot
-				Riksorg = allt
-				Förening / arbetsgrupp = begränsa till dess användare + kolla behörigheter
-				Användare = access denied
-
-			if($user == admin)
-			{
-				// Access to everything
-			}
-			else if($user == invidual member)
-			{
-				// Access only to self
-			}
-			else
-			{
-				//
-			}
-
-			Permissions:
-				Admin    = Hämta samtliga users
-				User     = Hämta sin egen data
-				Styrelse = Hämta users för en viss organisation
-
-				Read content
-				Create content
-				Delete content
-		*/
-

@@ -1,36 +1,36 @@
 module.exports = {
-	childRoutes: [
-		{
-			path: "messages",
-			indexRoute: {
-				onEnter: (nextState, replace) => replace("/messages/history"),
-			},
-			childRoutes: [
-				{
-					path: "history",
-					component: require("./Pages/Messages/List")
-				},
-				{
-					path: "new",
-					component: require("./Pages/Messages/New")
-				},
-				{
-					path: "templates",
-					component: require("./Pages/Templates/List"),
-				},
-				{
-					path: "templates/new",
-					component: require("./Pages/Templates/Add"),
-				},
-				{
-					path: "templates/:id",
-					component: require("./Pages/Templates/Edit"),
-				},
-				{
-					path: ":id",
-					component: require("./Pages/Messages/Show")
-				},
-			]
-		},
-	]
-}
+    childRoutes: [
+        {
+            path: "messages",
+            indexRoute: {
+                onEnter: (nextState, replace) => replace("/messages/history"),
+            },
+            childRoutes: [
+                {
+                    path: "history",
+                    component: require("./MessageList").default
+                },
+                {
+                    path: "new",
+                    component: require("./MessageAdd").default
+                },
+                {
+                    path: "templates",
+                    component: require("./TemplateList").default,
+                },
+                {
+                    path: "templates/new",
+                    component: require("./TemplateAdd").default,
+                },
+                {
+                    path: "templates/:id",
+                    component: require("./TemplateEdit").default,
+                },
+                {
+                    path: ":id",
+                    component: require("./MessageShow").default
+                },
+            ]
+        },
+    ]
+};

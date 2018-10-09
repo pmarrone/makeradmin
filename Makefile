@@ -28,6 +28,10 @@ init-db: .env
 stop:
 	docker-compose down
 
+test-admin-js:
+	npm --prefix frontend run eslint
+	npm --prefix frontend run test
+
 test:
 	python3 -m unittest tests
 
@@ -36,8 +40,8 @@ firstrun: .env build init-db
 
 frontend-dev-server:
 	mkdir -p frontend/node_modules
-	docker-compose -f frontend/dev-server-compose.yaml rm -f
-	docker volume rm makeradmin_node_modules
+	docker-compose -f frontend/dev-server-compose.yaml rm -sfv
+	docker volume rm -f makeradmin_node_modules
 	docker-compose -f frontend/dev-server-compose.yaml up --build
 
 .PHONY: build firstrun frontend-dev-server init init-db init-npm init-pip install run stop

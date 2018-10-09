@@ -25,7 +25,8 @@ class Entity
 	protected $default_expands = [];
 	protected $sort = ["created_at", "desc"]; // An array with sorting options eg. ["entity_id", "desc"] or [["date_updated", "asc"],["date_created","desc"]]
 	protected $validation = [];               // Validation rules
-	protected $deletable = true;
+	protected $soft_deletable = true;
+	protected $show_deleted = false;       // Specify if deleted items should be displayed/accessible.
 
 	/**
 	 * Constructor
@@ -79,6 +80,13 @@ class Entity
 					$this->sort = $filter;
 					unset($filters[$id]);
 				}
+				else if("show_deleted" == $id)
+				{
+					if ($filter === 'true') {
+						$this->show_deleted = true;
+					}
+					unset($filters[$id]);
+				}
 			}
 		}
 	}
@@ -86,7 +94,7 @@ class Entity
 	/**
 	 * Build the base query with selecting entity types, tables, columns, join, sort and filtering removed items.
 	 */
-	protected function _buildLoadQuery($show_deleted = false)
+	protected function _buildLoadQuery()
 	{
 		// Get all entities
 		$query = DB::table($this->table);
@@ -98,10 +106,19 @@ class Entity
 //			$query = $query->join($this->join, "{$this->join}.entity_id", "=", "entity.entity_id");
 		}
 
-		// Get columns
-		foreach($this->columns as $name => $column)
+		if($this->soft_deletable)
 		{
-			$query = $query->selectRaw("{$column["select"]} AS `{$name}`");
+			// Show deleted entities or not?
+			if($this->show_deleted === true)
+			{
+				// Include the deleted_at column in output only when we show deleted content
+				$this->include_deleted_at();
+			}
+			else
+			{
+				// The deleted_at should be null, which means it is not yet deleted
+				$query = $query->whereNull("{$this->table}.deleted_at");
+			}
 		}
 
 		// Collect expand data
@@ -116,44 +133,43 @@ class Entity
 						continue;
 					}
 					$self_column = $expand['column'];
+					$join_sub_query = $expand['join_sub_query'] ?? null;
 					$join_table = $expand['join_table'];
 					$join_column = array_key_exists('join_column', $expand) ? $expand['join_column'] : $self_column;
 					$join_type = array_key_exists('join_type', $expand) ? $expand['join_type'] : "inner";
-					if ("inner" == $join_type) {
-						$query = $query->join($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
-					} else if ("left" == $join_type) {
-						$query = $query->leftJoin($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
-					} else if ("right" == $join_type) {
-						$query = $query->rightJoin($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+					if ($join_sub_query !== null) {
+						if ("inner" == $join_type) {
+							$query = $query->joinSub($join_sub_query, $join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						} else if ("left" == $join_type) {
+							$query = $query->leftJoinSub($join_sub_query, $join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						} else if ("right" == $join_type) {
+							$query = $query->rightJoinSub($join_sub_query, $join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						}
+					} else {
+						if ("inner" == $join_type) {
+							$query = $query->join($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						} else if ("left" == $join_type) {
+							$query = $query->leftJoin($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						} else if ("right" == $join_type) {
+							$query = $query->rightJoin($join_table, "{$join_table}.{$join_column}", "=", "{$this->table}.{$self_column}");
+						}
 					}
 					$base_table = $join_table;
 				}
 				foreach ($expand['selects'] as $name => $select) {
 					if (is_int($name)) {
-						$query = $query->selectRaw("{$base_table}.{$select} AS `{$select}`");
+						$this->columns[$select] = ['select' => "{$base_table}.{$select}"];
 					} else {
-						$query = $query->selectRaw("{$select} AS `{$name}`");
+						$this->columns[$name] = ['select' => "{$select}"];
 					}
 				}
 			}
 		}
 
-		if($this->deletable)
+		// Get columns
+		foreach($this->columns as $name => $column)
 		{
-			// Show deleted entities or not?
-			if($show_deleted === true)
-			{
-				// Include the deleted_at column in output only when we show deleted content
-				$this->columns["deleted_at"] = [
-					"column" => "{$this->table}.deleted_at",
-					"select" => "{$this->table}.deleted_at",
-				];
-			}
-			else
-			{
-				// The deleted_at should be null, which means it is not yet deleted
-				$query = $query->whereNull("{$this->table}.deleted_at");
-			}
+			$query = $query->selectRaw("{$column["select"]} AS `{$name}`");
 		}
 
 		// Return the query
@@ -319,7 +335,7 @@ class Entity
 		$this->_preprocessFilters($filters);
 
 		// Build base query
-		$query = $this->_buildLoadQuery($filters);
+		$query = $this->_buildLoadQuery();
 
 		// Apply standard filters like entity_id, relations, etc
 		$query = $this->_applyFilter($query, $filters);
@@ -371,7 +387,8 @@ class Entity
 		$this->_preprocessFilters($filters);
 
 		// Build base query
-		$query = $this->_buildLoadQuery($show_deleted);
+		$this->show_deleted = $show_deleted;
+		$query = $this->_buildLoadQuery();
 
 		// Apply standard filters like entity_id, relations, etc
 		$query = $this->_applyFilter($query, $filters);
@@ -599,6 +616,17 @@ class Entity
 	}
 
 	/**
+	 * Include deleted_at column (and show deleted)
+	 */
+	public function include_deleted_at()
+	{
+		$this->columns["deleted_at"] = [
+			"column" => "{$this->table}.deleted_at",
+			"select" => "{$this->table}.deleted_at",
+		];
+	}
+
+	/**
 	 * Delete an entity
 	 *
 	 * A soft delete is used as standard and will only flag the entity as deleted
@@ -716,7 +744,7 @@ class Entity
 					// A unique value collision is not fatal if it is from the same entity thas is being validated (itself)... or else we could not save an entity
 					if(!empty($result) && ($result->entity_id != $this->entity_id))
 					{
-						throw new EntityValidationException($field, null, "The value needs to be unique in the database");
+						throw new EntityValidationException($field, "unique");
 					}
 				}
 				// Validate a date according to ISO8601 standard

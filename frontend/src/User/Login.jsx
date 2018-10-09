@@ -1,22 +1,18 @@
 import React from 'react';
-import { withRouter } from 'react-router'
+import { withRouter } from 'react-router';
+import auth from '../auth';
 
-import MemberLogin from './MemberLogin'
-import MemberView from './MemberView'
-import auth from '../auth'
 
-module.exports = withRouter(class Login extends React.Component
+class Login extends React.Component
 {
-	componentWillMount()
-	{
-		auth.setToken(this.props.params.token);
-		window.location.replace("/" + this.props.location.query.redirect);
-	}
+    componentDidMount() {
+        auth.setToken(this.props.params.token);
+        window.location.replace("/" + this.props.location.query.redirect);
+    }
 
-	render()
-	{
-		return (
-			<p>Logging in...</p>
-		)
-	}
-});
+    render() {
+        return <p>Logging in...</p>;
+    }
+}
+
+export default withRouter(Login);

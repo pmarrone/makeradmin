@@ -1,10 +1,8 @@
-var webpack = require('webpack');
 const path = require('path');
+const merge = require('webpack-merge');
+const webpack = require('webpack');
 
 var src = path.resolve(__dirname, "src")
-
-var mode = process.env.DEVELOPMENT ? 'development' : 'production'
-console.info("mode: " + mode);
 
 // Get git info from command line
 var commitHash = require("child_process")
@@ -19,7 +17,7 @@ var options = {
 };
 var buildDate = new Intl.DateTimeFormat('sv-SE', options).format(new Date());
 
-module.exports = {
+const commonSettings = {
     context: src,
     entry: "./app.jsx",
 
@@ -39,6 +37,23 @@ module.exports = {
                 exclude: /node_modules/,
                 use: ['babel-loader'],
             },
+            {
+                test: /\.css$/,
+                use: [
+                    {
+                        loader: "style-loader",
+                        options: {
+                            sourceMap: true
+                        }
+                    },
+                    {
+                        loader: "css-loader",
+                        options: {
+                            sourceMap: true
+                        }
+                    }
+                ]
+            },
         ]
     },
 
@@ -54,13 +69,38 @@ module.exports = {
             __BUILD_DATE__: JSON.stringify(buildDate),
         })
     ],
+}
+
+if (process.env.DEVELOPMENT) {
+    console.info("webpack development mode");
+
+    module.exports = merge(commonSettings, {
+        mode: "development",
+        devtool: "inline-source-map",
+        plugins: [
+        ],
+        devServer: {
+            host: "0.0.0.0",
+            contentBase: "./dist",
+            historyApiFallback: true,           
+        },
+    });
+}
+else {
+    console.info("webpack production mode");
+
+    const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
+    const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
     
-    mode: mode,
-    
-    // Config for webpack-serve.
-    devServer: {
-        host: "0.0.0.0",
-        contentBase: "./dist",
-        historyApiFallback: true,
-    }
+
+    module.exports = merge(commonSettings, {
+        mode: "production",
+        devtool: "source-map",
+        plugins: [
+            new webpack.LoaderOptionsPlugin({
+                minimize: true,
+            }),
+            // new BundleAnalyzerPlugin(),
+        ],
+    });
 }

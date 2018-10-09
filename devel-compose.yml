@@ -248,12 +248,10 @@ services:
       - api-gateway
     networks:
       - makeradmin
-
+      
   frontend:
     image: makeradmin/frontend:1.0
     build: ./frontend
-    volumes:
-      - ./frontend/dist:/var/www/html/
     environment:
       HOST_BACKEND:
     ports:
