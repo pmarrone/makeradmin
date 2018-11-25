@@ -15,8 +15,10 @@ RUN    export DEBIAN_FRONTEND=noninteractive; \
     && mkdir -p /run/php \
     && ln -s /usr/sbin/php-fpm7.2 /usr/sbin/php-fpm
 
+ENV TZ Europe/Stockholm
+
 # Nodesource cert etc
-RUN curl -sL https://deb.nodesource.com/setup_10.x | bash -
+RUN curl -sL https://deb.nodesource.com/setup_8.x | bash -
 
 # js dependencies
 RUN export DEBIAN_FRONTEND=noninteractive; \
@@ -31,17 +33,6 @@ RUN pip3 install -r /requirements.txt
 
 # Php dependencies
 # Relying on library's composer-files being a superset of other php modules 
-ADD ./library/lumen/composer.json /var/www/html/
-ADD ./library/lumen/composer.lock /var/www/html/
-RUN composer install --no-scripts --no-autoloader --no-suggest --no-dev -d /var/www/html \
- && composer dumpautoload --no-dev -d /var/www/html
-
-# js dependencies 2
-# Copy package file first, to avoid having to install dependencies every time a source file is updated
-RUN mkdir -p /var/tmp/data/src /var/tmp/data/dist/js
-COPY ./frontend/webpack.config.js ./frontend/package.json /var/tmp/data/
-WORKDIR /var/tmp/data
-RUN npm install
 
 # top scripts
 WORKDIR /

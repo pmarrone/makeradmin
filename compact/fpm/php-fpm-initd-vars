@@ -1,0 +1,7 @@
+# Will be sourced by sh
+
+DAEMON_ARGS="$DAEMON_ARGS -c /etc/php/7.2/fpm/php.ini"
+echo "php-fpm daemon args $DAEMON_ARGS"
+
+VERBOSE=yes
+

@@ -2,25 +2,51 @@ PHP_VER_PATH=${MAKERADMIN_PHP_VERSION:-7.2}
 
 #-----------------------
 
-function redeploy_js() {
-   local tmp=/var/tmp
+function redeploy_frontend() {
+   local tmp=/var/tmp/data
+   local cdir=`pwd`
 
-   cp /opt/frontend/webpack.config.js /opt/frontend/package.json ${tmp}/data/
-   cp -r /opt/frontend/src/                                      ${tmp}/data/
+   rm -rf ${tmp}
+   mkdir -p ${tmp}/dist/js
 
-   node ${tmp}/data/node_modules/webpack/bin/webpack.js --config ${tmp}/data/webpack.config.js --progress
+   cp /opt/frontend/webpack.config.js           ${tmp}/
+   cp /opt/frontend/member.webpack.config.js    ${tmp}/
+   cp /opt/frontend/package.json                ${tmp}/
+   cp /opt/frontend/package-lock.json           ${tmp}/
+   cp -r /opt/frontend/src/                     ${tmp}/src/
+   cp /opt/frontend/jestSetup.js                ${tmp}/
+
+   cd ${tmp}
+
+   echo -----------------
+   npm install
+
+   echo -----------------
+   npm run eslint
+   npm run test
+
+   echo -----------------
+   ./node_modules/.bin/webpack --config ./webpack.config.js
+
+   echo -----------------
+   ./node_modules/.bin/webpack --config ./member.webpack.config.js
+
+   cd /
 
    mkdir -p /var/www/html/js/
-   mv -f ${tmp}/data/dist/js/app.js /var/www/html/js/
+
+   cp -r /opt/frontend/dist/* /var/www/html
+   cp -rf ${tmp}/dist/*       /var/www/html
+
+   cd ${cdir}
 }
 
 #------------------------
 
 function redeploy_apigateway() {
-   rm -rf /var/www/html/apigateway
-   mkdir -p  /var/www/html/apigateway
+   mkdir -p  /var/www/html/
 
-   cp -r /opt/apigateway/lumen/*  /var/www/html/apigateway
+   cp -r /opt/apigateway/lumen/*  /var/www/html/
 
    cp /opt/apigateway/docker/myStartupScript.sh /scripts/apigatewayStartupScript.sh
 }
@@ -44,47 +70,60 @@ function redeploy_library() {
    rm -rf /var/www/library/
    mkdir -p /var/www/html/library/
 
+   cp /opt/library/lumen/composer.json /var/www/html/
+   cp /opt/library/lumen/composer.lock /var/www/html/
+
+   composer install --no-scripts --no-autoloader --no-suggest --no-dev -d /var/www/html
+   composer dumpautoload --no-dev -d /var/www/html
+
    cp -r /opt/library/lumen/*             /var/www/html/library
    cp -r /opt/library/src/Makeradmin/*    /var/www/html/library
 }
 
 #------------------------
 
-function redeploy_frontend() {
-   redeploy_js
-   cp -r /opt/frontend/dist/* /var/www/html
-}
+function redeploy_servers_conf() {
+   local etcphp=/etc/php/${PHP_VER_PATH}/fpm
+   local etcdef=/etc/default/php-fpm${PHP_VER_PATH}
 
-#------------------------
-
-function redeploy_ngix_fpm() {
    servers_stop
 
-   # Servers configuration files
-   rm -f /etc/php/${PHP_VER_PATH}/fpm/pool.d/*
-   cp /opt/compact/fpm-pool*.conf  /etc/php/${PHP_VER_PATH}/fpm/pool.d
-   cp /opt/compact/fpm-php.conf    /etc/php/${PHP_VER_PATH}/php-fpm.conf # fix name
+   mkdir -p /var/log/madm/
+
+   # Php configuration files
+
+   rm -f ${etcphp}/fpm/pool.d/*
+   rm -f ${etcphp}/fpm/php.ini
+   rm -f ${etcdef}
+
+   cp /opt/compact/fpm/fpm-pool*.conf   ${etcphp}/pool.d/
+   cp /opt/compact/fpm/php-fpm.conf     ${etcphp}/php-fpm.conf
+   cp /opt/compact/fpm/php.ini          ${etcphp}/
+
+   cp /opt/compact/fpm/php-fpm-initd-vars ${etcdef}
+
+   # Nginx configuration files
 
    rm -f /etc/nginx/sites-enabled/*
    rm -f /etc/nginx/nginx.conf
-   cp /opt/compact/nginx-*.conf    /etc/nginx/sites-enabled/
-   cp /opt/compact/nginx.conf      /etc/nginx/nginx.conf
 
+   cp /opt/compact/nginx/nginx-*.conf    /etc/nginx/sites-enabled/
+   cp /opt/compact/nginx/nginx.conf      /etc/nginx/nginx.conf
+
+   # owner root www folder
    chown -R www-data:www-data /var/www/html/*
 }
 
-
 #------------------------
-
-function servers_start() {
-   # Start processes
-   /usr/sbin/nginx &
-   /usr/sbin/php-fpm &
-
-}
 
 function servers_initonce() {
    sleep 2
+
+   # log init
+   local lpath=/var/log/madm
+   mkdir -p ${lpath}
+   chgrp www-data ${lpath}
+   chmod g+w ${lpath}
 
    # Service init
    /usr/bin/php /var/www/html/apigateway/artisan db:init
@@ -93,7 +132,21 @@ function servers_initonce() {
 
 #------------------------
 
+function servers_start() {
+   # Start processes
+   /etc/init.d/nginx start
+   /etc/init.d/php${PHP_VER_PATH}-fpm start
+}
+
+#------------------------
+
 function servers_stop() {
+   /etc/init.d/php${PHP_VER_PATH}-fpm stop
+   /etc/init.d/nginx stop
+
+  sleep 3
+
+   # Force if not down
    if [ -r /run/nginx.pid ]; then
        /usr/sbin/nginx -s stop
    fi
@@ -102,5 +155,11 @@ function servers_stop() {
       kill -QUIT `cat /var/run/php/php${PHP_VER_PATH}-fpm.pid`
    fi
 }
+
+function servers_restart() {
+   servers_stop
+   servers_start
+}
+
 
 
